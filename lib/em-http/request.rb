@@ -90,7 +90,12 @@ module EventMachine
           c.method = @method
           c.options = @options
           c.comm_inactivity_timeout = @options[:timeout]
-          c.pending_connect_timeout = @options[:timeout]
+          begin
+            c.pending_connect_timeout = @options[:timeout]
+          rescue NoMethodError => ex
+            # not defined in Java version
+            raise unless ex.name == :set_pending_connect_timeout
+          end
           blk.call(c) unless blk.nil?
         }
       rescue EventMachine::ConnectionError => e

@@ -46,42 +46,86 @@ def extconf(dir)
   Dir.chdir(dir) { ruby "extconf.rb" }
 end
 
-def setup_extension(dir, extension)
-  ext = "ext/#{dir}"
-  ext_so = "#{ext}/#{extension}.#{Config::CONFIG['DLEXT']}"
-  ext_files = FileList[
-    "#{ext}/*.c",
-    "#{ext}/*.h",
-    "#{ext}/extconf.rb",
-    "#{ext}/Makefile",
-    "lib"
-  ] 
-  
-  task "lib" do
-    directory "lib"
-  end
-
-  desc "Builds just the #{extension} extension"
-
-  mf = (extension + '_makefile').to_sym
-
-  task mf do |t|
-    extconf "#{ext}"
-  end
-
-  task extension.to_sym => [mf] do
-    make "#{ext}"
-    cp ext_so, "lib"
+if RUBY_PLATFORM =~ /java/
+  def java_classpath_arg
+    # A myriad of ways to discover the JRuby classpath
+    classpath = begin
+      require 'java'
+      # Already running in a JRuby JVM
+      Java::java.lang.System.getProperty('java.class.path')
+    rescue LoadError
+      ENV['JRUBY_PARENT_CLASSPATH'] || ENV['JRUBY_HOME'] && FileList["#{ENV['JRUBY_HOME']}/lib/*.jar"].join(File::PATH_SEPARATOR)
+    end
+    classpath ? "-cp #{classpath}" : ""
   end
 end
 
-setup_extension("buffer", "em_buffer")
-setup_extension("http11_client", "http11_client")
+def define_extension_tasks
+  extension = "http11_client"
 
-task :compile => [:em_buffer, :http11_client]
+  case RUBY_PLATFORM
+  when /java/
+    # Avoid JRuby in-process launching problem
+    begin
+      require 'jruby'
+      JRuby.runtime.instance_config.run_ruby_in_process = false 
+    rescue LoadError
+    end
+
+    filename = "lib/#{extension}.jar"
+    file filename do
+      build_dir = "ext/http11_java/classes"
+      mkdir_p build_dir
+      sources = FileList['ext/http11_java/**/*.java'].join(' ')
+      sh "javac -target 1.4 -source 1.4 -d #{build_dir} #{java_classpath_arg} #{sources}"
+      sh "jar cf #{filename} -C #{build_dir} ."
+      #mv "ext/#{filename}", "lib/"
+    end
+    task extension.intern => [filename]
+
+  else
+    ext = "ext/#{extension}"
+    ext_so = "#{ext}/#{extension}.#{Config::CONFIG['DLEXT']}"
+    ext_files = FileList[
+      "#{ext}/*.c",
+      "#{ext}/*.h",
+      "#{ext}/extconf.rb",
+      "#{ext}/Makefile",
+      "lib"
+    ] 
+
+    task "lib" do
+      directory "lib"
+    end
+
+    mf = (extension + '_makefile').to_sym
+
+    task mf do |t|
+      extconf "#{ext}"
+    end
+
+    desc "Builds just the #{extension} extension"
+
+    task extension.to_sym => [mf] do
+      make "#{ext}"
+      cp ext_so, "lib"
+    end
+
+  end
+end
+
+#setup_extension("buffer", "em_buffer")
+#setup_extension("http11_client", "http11_client")
+
+#task :compile => [:em_buffer, :http11_client]
+define_extension_tasks
+
+desc "compile extensions"
+task :compile => [:http11_client]
 
 CLEAN.include ['build/*', '**/*.o', '**/*.so', '**/*.a', '**/*.log', 'pkg']
 CLEAN.include ['ext/buffer/Makefile', 'lib/em_buffer.*', 'lib/http11_client.*']
+CLEAN.include ['ext/http11_java/classes/**/*','lib/http11_client.jar']
 
 begin
   require 'jeweler'
@@ -93,11 +137,14 @@ begin
     gemspec.homepage = "http://github.com/igrigorik/em-http-request"
     gemspec.authors = ["Ilya Grigorik"]
     gemspec.required_ruby_version = ">= 1.8.6"
-    gemspec.extensions = ["ext/buffer/extconf.rb" , "ext/http11_client/extconf.rb"]
+    if RUBY_PLATFORM !~ /java/
+      gemspec.extensions = ["ext/buffer/extconf.rb" , "ext/http11_client/extconf.rb"]
+    end
     gemspec.add_dependency('eventmachine', '>= 0.12.9')
     gemspec.add_dependency('addressable', '>= 2.0.0')
     gemspec.rubyforge_project = "em-http-request"
     gemspec.files = FileList[`git ls-files`.split]
+    gemspec.files << "lib/http11_client.jar" if RUBY_PLATFORM =~ /java/
   end
   
   Jeweler::GemcutterTasks.new
