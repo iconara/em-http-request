@@ -1,4 +1,7 @@
 *.bundle
 *.o
 Makefile
-mkmf.log
+mkmf.logpkg
+lib/http11_client.jar
+em-http-request.gemspec
+pkg
