@@ -52,7 +52,8 @@ if RUBY_PLATFORM =~ /java/
     classpath = begin
       require 'java'
       # Already running in a JRuby JVM
-      Java::java.lang.System.getProperty('java.class.path')
+      cp = Java::java.lang.System.getProperty('java.class.path')
+      cp += File.join(ENV_JAVA['jruby.home'], 'lib', 'jruby.jar') unless cp.include?('jruby.jar')
     rescue LoadError
       ENV['JRUBY_PARENT_CLASSPATH'] || ENV['JRUBY_HOME'] && FileList["#{ENV['JRUBY_HOME']}/lib/*.jar"].join(File::PATH_SEPARATOR)
     end
