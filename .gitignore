@@ -3,5 +3,4 @@
 Makefile
 mkmf.logpkg
 lib/http11_client.jar
-em-http-request.gemspec
 pkg
